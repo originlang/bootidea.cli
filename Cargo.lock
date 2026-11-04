@@ -498,6 +498,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "originlang-ext-host"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "originlang-ext-manifest",
  "originlang-ext-permission",
@@ -515,6 +516,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-manifest"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "originlang-ext-permission",
  "serde",
@@ -526,6 +528,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-permission"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "serde",
  "serde_json",
@@ -534,6 +537,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-plugin-abi"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "serde_json",
 ]
@@ -541,6 +545,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-protocol"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "serde",
  "serde_json",
@@ -549,6 +554,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-runtime"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "originlang-ext-protocol",
  "serde",
@@ -558,6 +564,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-runtime-dylib"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "libloading",
  "originlang-ext-plugin-abi",
@@ -569,6 +576,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-runtime-process"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "originlang-ext-protocol",
  "originlang-ext-runtime",
@@ -578,6 +586,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-runtime-quickjs"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "originlang-ext-protocol",
  "originlang-ext-runtime",
@@ -588,10 +597,12 @@ dependencies = [
 [[package]]
 name = "originlang-ext-scheduler"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 
 [[package]]
 name = "originlang-ext-session"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "getrandom",
  "serde",
@@ -601,6 +612,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-signing"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 dependencies = [
  "ed25519-dalek",
  "getrandom",
@@ -612,6 +624,7 @@ dependencies = [
 [[package]]
 name = "originlang-ext-storage"
 version = "0.1.0"
+source = "git+https://github.com/originlang/originlang.extension.host?rev=a218046#a218046c9515dd3fe2586844359ae3a6f1692307"
 
 [[package]]
 name = "pathdiff"

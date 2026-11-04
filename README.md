@@ -62,12 +62,12 @@ log_level = "debug"
 ## 与两个仓库的关系
 
 ```
-bootidea.cli  ──path 依赖──▶  originlang.extension.host（引擎库）
-      │                              │
+bootidea.cli  ──git 依赖（rev 锁定）──▶  originlang.extension.host（引擎库）
+      │                                        │
       └── 安装并调用 ──▶  originlang.extension.harness（harness.dll 插件）
 ```
 
-三个仓库并列检出即可构建；宿主与插件都不需要单独的可执行入口。升级宿主的库契约只需改 `Cargo.toml` 里的 path 依赖，入口的适配在这里独立演进。
+三个仓库互不要求并列检出：入口从 `Cargo.toml` 里写死的 git rev 取宿主 crate，单独 clone 本仓库就能构建。宿主与插件都不需要单独的可执行入口。宿主的库契约升级时，改这里的 rev 再 `cargo update`；入口的适配在这里独立演进。
 
 ## 命令
 
@@ -89,3 +89,5 @@ bootidea.cli  ──path 依赖──▶  originlang.extension.host（引擎库�
 cargo build --release
 cargo test
 ```
+
+宿主 crate 以 git 依赖锁定在固定 rev 上：本仓库可单独检出，不要求宿主仓库放在同级目录，但首次构建需要能访问 GitHub（之后走 `~/.cargo/git` 缓存与 `Cargo.lock`）。
