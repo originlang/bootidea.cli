@@ -1,0 +1,66 @@
+name: CI
+
+# 每次 push / PR 都编译并跑测试，保证 feature/dev 上始终是可构建状态。
+# 版本号与发布不在这里处理，见 release-please.yml。
+on:
+  push:
+    branches: ['feature/dev']
+  pull_request:
+    branches: ['feature/dev']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+      RUST_BACKTRACE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install repository toolchain
+        run: rustup show active-toolchain
+
+      # tests/transports.rs 通过 CARGO_BIN_EXE_bootidea 定位可执行文件，cargo test 会先构建 bin。
+      - name: Tests
+        run: cargo test --locked
+
+  quality:
+    name: Quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install repository toolchain
+        run: rustup show active-toolchain
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings

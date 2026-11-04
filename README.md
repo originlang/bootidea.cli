@@ -91,3 +91,16 @@ cargo test
 ```
 
 宿主 crate 以 git 依赖锁定在固定 rev 上：本仓库可单独检出，不要求宿主仓库放在同级目录，但首次构建需要能访问 GitHub（之后走 `~/.cargo/git` 缓存与 `Cargo.lock`）。
+
+本地改动**不会**自动编译成 `target/debug/bootidea.exe`——Rust 没有热重建，必须显式执行 `cargo build` / `cargo run` / `cargo test`。仓库里也没有 `build.rs`，构建不产生额外的代码生成步骤。
+
+## CI 与发布
+
+| 工作流 | 触发 | 作用 |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | push / PR 到 `feature/dev` | Linux + Windows 编译并跑测试；fmt 与 clippy 作为门禁 |
+| `.github/workflows/release-please.yml` | push 到 `feature/dev` | release-please 开版本 PR；tag 落地后构建双平台产物并挂到 Release |
+
+版本号不手工维护，由 [release-please](https://github.com/googleapis/release-please) 依据 conventional commits 推导：`fix:` → patch，`feat:` → minor，`feat!:` / `BREAKING CHANGE` → 0.x 阶段只升 minor（`bump-minor-pre-major`）。因此提交信息必须符合规范，否则该提交不会进入 CHANGELOG，也不会触发版本提升。
+
+工作流需要仓库配置 `RELEASE_PLEASE_TOKEN` secret（PAT 或 App token）。用默认 `GITHUB_TOKEN` 创建的 tag 不会触发下游构建，也无法在受保护分支上开 PR。

@@ -1,0 +1,146 @@
+name: Release Please
+
+# 版本号由 release-please 依据 conventional commits 生成（本仓库不手工改版本）：
+# 它在 feature/dev 上开一个 "chore: release" PR，合并后打 vX.Y.Z tag、写 CHANGELOG，
+# 随后同一工作流在该 tag 上跑测试、构建多平台产物并挂到 GitHub Release。
+# 平时每次 push 的编译校验走 ci.yml；两条线互不替代。
+on:
+  push:
+    branches: ['feature/dev']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    if: github.ref_type == 'branch' && github.ref_name == (vars.RELEASE_BRANCH || 'feature/dev')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # 需要 PAT 或 App token：用默认 GITHUB_TOKEN 创建的 tag 不会触发下游工作流，
+          # 也无法在受保护分支上开 release PR。
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          target-branch: ${{ vars.RELEASE_BRANCH || 'feature/dev' }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+      RUST_BACKTRACE: '1'
+      BUILD_TARGET: ${{ matrix.target }}
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          persist-credentials: false
+
+      # rust-toolchain.toml 把 channel 钉在 1.99.0，rustup 会自动装齐 rustfmt/clippy。
+      - name: Install repository toolchain
+        run: rustup show active-toolchain
+
+      # 依赖里 originlang-ext-* 指向 host 仓库的 git rev。若该仓库为私有，
+      # 这里需要 PAT（CARGO_NET_GIT_FETCH_WITH_CLI + credential store），否则无法拉取。
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build release binary
+        run: cargo build --locked --release --target "$BUILD_TARGET"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#v}"
+          name="bootidea-${tag}-${BUILD_TARGET}"
+          mkdir -p dist
+          install -m 0755 "target/${BUILD_TARGET}/release/bootidea" "dist/${name}"
+          cp README.md "dist/${name}.README.md"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}" "${name}.README.md"
+          rm "dist/${name}" "dist/${name}.README.md"
+          ( cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG -replace '^v', ''
+          $name = "bootidea-$tag-$env:BUILD_TARGET"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target/$env:BUILD_TARGET/release/bootidea.exe" "dist/$name.exe"
+          Copy-Item README.md "dist/$name.README.md"
+          Compress-Archive -Force -Path "dist/$name.exe", "dist/$name.README.md" -DestinationPath "dist/$name.zip"
+          Remove-Item "dist/$name.exe", "dist/$name.README.md"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$name.zip").Hash.ToLowerInvariant()
+          # 与 sha256sum 相同的 "<hash>  <file>" 格式，供发布前统一校验
+          [IO.File]::WriteAllText("dist/$name.zip.sha256", "$hash  $name.zip`n")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    name: Attach assets
+    needs: [release-please, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload assets to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd dist
+          # 少一个平台宁可失败，也不要发半套产物
+          test "$(find . -maxdepth 1 -name '*.sha256' | wc -l)" -eq 2
+          sha256sum --check ./*.sha256
+          gh release upload "$RELEASE_TAG" ./*.zip ./*.tar.gz ./*.sha256 --clobber
