@@ -1,0 +1,32 @@
+[package]
+name = "bootidea"
+description = "BootIDEA 命令行：扩展宿主、插件管理与 agent 运行"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+
+[[bin]]
+name = "bootidea"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+config = { version = "0.15", default-features = false, features = ["toml", "yaml"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+tiny_http = "0.12"
+
+# 宿主引擎：同进程链接，与 bootidea 一起编译
+originlang-ext-host = { path = "../originlang.extension.host/crates/host" }
+originlang-ext-manifest = { path = "../originlang.extension.host/crates/manifest" }
+originlang-ext-permission = { path = "../originlang.extension.host/crates/permission" }
+originlang-ext-protocol = { path = "../originlang.extension.host/crates/protocol" }
+originlang-ext-runtime = { path = "../originlang.extension.host/crates/runtime" }
+originlang-ext-runtime-dylib = { path = "../originlang.extension.host/crates/runtime-dylib" }
+originlang-ext-runtime-process = { path = "../originlang.extension.host/crates/runtime-process" }
+originlang-ext-runtime-quickjs = { path = "../originlang.extension.host/crates/runtime-quickjs" }
+originlang-ext-session = { path = "../originlang.extension.host/crates/session" }
+originlang-ext-signing = { path = "../originlang.extension.host/crates/signing" }
