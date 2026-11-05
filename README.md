@@ -71,6 +71,8 @@ bootidea.cli  ──git 依赖（rev 锁定）──▶  originlang.extension.ho
 
 ## 命令
 
+未来的 `bi` 快捷入口及 `app`（软件）、`repo`（Git 仓库）、`env`（开发环境）等命令组见 [CLI 子命令设计](docs/command-design.md)。该文档为规划，尚未实现；下表列出当前命令。
+
 | 命令 | 用途 |
 | --- | --- |
 | `info` | 宿主版本、可用后端、扩展计数 |
