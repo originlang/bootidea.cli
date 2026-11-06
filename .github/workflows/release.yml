@@ -1,9 +1,12 @@
 name: Release
 
-# 发布唯一入口：push vX.Y.Z 标签（tag 即版本号，不依赖 release-please、不改 Cargo.toml）。
+# 发布唯一入口：手动 push vX.Y.Z 标签（tag 即版本号，不依赖 release-please、不改 Cargo.toml）。
 #   git tag v0.1.1 && git push origin v0.1.1
-# 触发后按 tag 检出代码，跑测试、构建多平台产物并挂到同名 GitHub Release。
-# 平时每次 push 的编译校验走 ci.yml；两条线互不替代。
+# 触发后按 tag 检出代码，构建多平台产物并挂到同名 GitHub Release。
+#
+# 这里刻意不跑测试、不做 fmt/clippy：GitHub Actions 只负责出正式版产物，
+# 省下双平台构建加测试的分钟数。测试、检查、nightly 构建全部在本地用 act 完成，
+# 见 .act/nightly.yml。发布前请先在本地跑通 act，再把 tag 推上来。
 on:
   push:
     tags:
@@ -50,9 +53,6 @@ jobs:
 
       # 依赖里 originlang-ext-* 指向 host 仓库的 git rev。若该仓库为私有，
       # 这里需要 PAT（CARGO_NET_GIT_FETCH_WITH_CLI + credential store），否则无法拉取。
-      - name: Test
-        run: cargo test --locked
-
       - name: Build release binary
         run: cargo build --locked --release --target "$BUILD_TARGET"
 

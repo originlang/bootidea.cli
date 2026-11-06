@@ -11,3 +11,4 @@
 .idea/
 .vscode/
 *.rs.bk
+.workbuddy/

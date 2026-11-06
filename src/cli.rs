@@ -234,7 +234,9 @@ pub enum TrustCommand {
 
 /// 仓库管理子命令。
 ///
-/// 仓库目标支持登记名称或本地路径；登记名称在登记时保证唯一。
+/// 仓库目标支持登记名称或本地路径；登记名称在登记时保证唯一。批量命令共用
+/// [`TargetArgs`]：名称/路径列表、`--all`、`--group`、`--under` 互斥，其余
+/// 筛选条件取交集。
 #[derive(Subcommand, Debug)]
 pub enum RepoCommand {
     /// 克隆并登记仓库
@@ -249,33 +251,217 @@ pub enum RepoCommand {
         name: Option<String>,
     },
     /// 登记已有仓库
-    Add { path: PathBuf },
+    Add {
+        path: PathBuf,
+        /// 指定唯一登记名称
+        #[arg(long)]
+        name: Option<String>,
+    },
     /// 扫描目录，发现并登记其中的仓库
-    Scan { dir: PathBuf },
-    /// 列出已登记仓库
-    List,
-    /// 查看路径、远端和分支
-    Info { target: String },
+    Scan {
+        /// 扫描根目录；与 --known-roots 互斥
+        #[arg(value_name = "DIR", conflicts_with = "known_roots")]
+        dir: Option<PathBuf>,
+        /// 扫描深度，根目录为第 0 层（默认 3；重扫同一根目录时沿用保存值）
+        #[arg(long, value_name = "N")]
+        depth: Option<u8>,
+        /// 排除相对扫描根目录的路径（glob，可重复；不含 / 时也匹配目录名）
+        #[arg(long, value_name = "GLOB")]
+        exclude: Vec<String>,
+        /// 继续搜索仓库内部的嵌套仓库
+        #[arg(long)]
+        nested: bool,
+        /// 只展示发现结果，不写索引或根目录配置
+        #[arg(long)]
+        dry_run: bool,
+        /// 按保存的规则重扫全部已知根目录
+        #[arg(long)]
+        known_roots: bool,
+        /// JSON 输出
+        #[arg(long)]
+        json: bool,
+    },
+    /// 列出已登记仓库（只读索引，不调用 Git）
+    List {
+        /// 只列出该分组内的仓库
+        #[arg(long, value_name = "GROUP")]
+        group: Option<String>,
+        /// JSON 输出
+        #[arg(long)]
+        json: bool,
+    },
+    /// 查看单个仓库的实时信息
+    Info {
+        target: String,
+        /// JSON 输出
+        #[arg(long)]
+        json: bool,
+    },
     /// 用配置的编辑器打开仓库
-    Open { target: String },
+    Open {
+        /// 登记名称或本地路径（默认当前仓库）
+        target: Option<String>,
+    },
     /// 查看仓库状态；不带目标时查看当前仓库
     Status {
-        /// 登记名称或本地路径
-        target: Option<String>,
-        /// 汇总全部已登记仓库
+        #[command(flatten)]
+        select: TargetArgs,
+        /// 仅列出工作区有改动的仓库
         #[arg(long)]
-        all: bool,
+        dirty: bool,
+        /// 只读状态快照，不调用 Git
+        #[arg(long, conflicts_with = "under")]
+        cached: bool,
+        /// 并发数，默认串行
+        #[arg(long, default_value_t = 1, value_name = "N")]
+        jobs: usize,
+        /// JSON 输出
+        #[arg(long)]
+        json: bool,
     },
-    /// 获取远端更新，不合并、不推送、不切换分支
-    Fetch {
-        /// 登记名称或本地路径
-        target: Option<String>,
-        /// 获取全部已登记仓库
+    /// 获取各仓库所有已配置远端的更新
+    Fetch(BatchArgs),
+    /// 仅快进更新当前分支
+    Pull(BatchArgs),
+    /// 查看各仓库的差异
+    Diff {
+        #[command(flatten)]
+        batch: BatchArgs,
+        /// 展示已暂存的差异
         #[arg(long)]
-        all: bool,
+        staged: bool,
+    },
+    /// 列出各仓库本地分支
+    Branch(BatchArgs),
+    /// 切换到已有分支
+    Switch {
+        /// 分支名（必须已存在）
+        branch: String,
+        #[command(flatten)]
+        batch: BatchArgs,
+    },
+    /// 基于各仓库当前 HEAD 创建并切换分支
+    Start {
+        /// 新分支名（已存在时报错）
+        branch: String,
+        #[command(flatten)]
+        batch: BatchArgs,
+    },
+    /// 推送当前分支到已配置的 upstream
+    Push(BatchArgs),
+    /// 在各目标工作目录运行程序
+    Foreach {
+        #[command(flatten)]
+        batch: BatchArgs,
+        /// `--` 之后的程序与参数，直接传递，默认不经过 shell
+        #[arg(last = true, required = true, num_args = 1.., value_name = "COMMAND")]
+        command: Vec<String>,
+    },
+    /// 刷新已登记仓库的可访问状态与状态快照
+    Refresh {
+        /// 登记名称或本地路径；缺省刷新全部已登记仓库
+        #[arg(value_name = "TARGET")]
+        targets: Vec<String>,
+        /// 并发数，默认串行
+        #[arg(long, default_value_t = 1, value_name = "N")]
+        jobs: usize,
+        /// JSON 输出
+        #[arg(long)]
+        json: bool,
+    },
+    /// 更新仓库位置，保留 ID、名称和分组
+    Relocate {
+        /// 登记名称或本地路径
+        target: String,
+        /// 新位置
+        path: PathBuf,
     },
     /// 取消登记，保留本地文件
     Remove { target: String },
+    /// 管理仓库分组
+    #[command(subcommand)]
+    Group(GroupCommand),
+}
+
+/// 批量命令的目标选择参数。
+#[derive(Args, Debug, Clone, Default)]
+pub struct TargetArgs {
+    /// 登记名称或本地路径；可写多个
+    #[arg(value_name = "TARGET", conflicts_with_all = ["all", "group", "under"])]
+    pub targets: Vec<String>,
+    /// 选择全部已登记仓库
+    #[arg(long, conflicts_with_all = ["group", "under"])]
+    pub all: bool,
+    /// 选择分组内的仓库
+    #[arg(long, value_name = "GROUP", conflicts_with = "under")]
+    pub group: Option<String>,
+    /// 临时扫描该目录，不保存发现结果
+    #[arg(long, value_name = "DIR")]
+    pub under: Option<PathBuf>,
+    /// 按登记名称 glob 过滤
+    #[arg(long = "match", value_name = "GLOB")]
+    pub pattern: Option<String>,
+    /// 排除登记名称（glob，可重复）
+    #[arg(long, value_name = "GLOB")]
+    pub exclude: Vec<String>,
+}
+
+/// 批量 Git 命令的公共参数。
+#[derive(Args, Debug, Clone)]
+pub struct BatchArgs {
+    #[command(flatten)]
+    pub select: TargetArgs,
+    /// 并发数，默认串行；共享共同 Git 目录的 worktree 始终串行
+    #[arg(long, default_value_t = 1, value_name = "N")]
+    pub jobs: usize,
+    /// 展示固定后的目标与操作，不执行写操作
+    #[arg(long)]
+    pub dry_run: bool,
+    /// 某个仓库失败后停止调度新任务
+    #[arg(long)]
+    pub fail_fast: bool,
+    /// JSON 输出
+    #[arg(long)]
+    pub json: bool,
+}
+
+impl Default for BatchArgs {
+    fn default() -> Self {
+        Self {
+            select: TargetArgs::default(),
+            jobs: 1,
+            dry_run: false,
+            fail_fast: false,
+            json: false,
+        }
+    }
+}
+
+/// 仓库分组子命令。
+#[derive(Subcommand, Debug)]
+pub enum GroupCommand {
+    /// 创建分组
+    Create { name: String },
+    /// 把仓库加入分组
+    Add {
+        name: String,
+        #[arg(required = true, value_name = "TARGET")]
+        repos: Vec<String>,
+    },
+    /// 列出分组及成员
+    List {
+        /// JSON 输出
+        #[arg(long)]
+        json: bool,
+    },
+    /// 把仓库移出分组
+    Remove {
+        name: String,
+        #[arg(required = true, value_name = "TARGET")]
+        repos: Vec<String>,
+    },
+    /// 删除分组（不删除仓库登记）
+    Delete { name: String },
 }
 
 /// 用户配置子命令。

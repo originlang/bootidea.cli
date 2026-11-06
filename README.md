@@ -5,10 +5,12 @@ BootIDEA 的命令行入口。宿主与插件都不带 CLI：`originlang.extensi
 两个可执行入口 `bootidea` 与 `bi` 共用同一份实现，行为完全一致；`bi` 是日常快捷入口，`bootidea` 兼容既有脚本。
 
 ```sh
-bi repo clone https://github.com/originlang/bootidea.cli.git
-bi repo scan E:\originlang
+bi repo scan ~/Developer --depth 4
 bi repo status --all
-bi config set repo.root E:\originlang
+bi repo status --all --dirty --cached
+bi repo group create platform && bi repo group add platform bootidea.cli
+bi repo pull --all --dry-run
+bi config set repo.root ~/Developer
 bi doctor
 
 bootidea ext install ./examples/toolbox --grant storage.read,storage.write,log.write
@@ -34,8 +36,10 @@ src/config.rs          分层配置与 Settings
 src/engine.rs          宿主装配：安装目录、后端路由、shutdown 保证
 src/log.rs             级别过滤的 stderr 输出
 src/commands/          info / repo / config / doctor / ext / run / agent / serve / keygen / sign / trust
+src/commands/repo/     repo 命令组：索引与锁、扫描、Git 采集、目标选择、批量调度
 src/serve/             JSON-RPC 的 stdio、TCP、HTTP 三种传输
 tests/transports.rs    真实进程的传输与鉴权测试
+tests/repo.rs          repo 端到端测试（真实二进制 + 真实 Git）
 ```
 
 ## 配置
@@ -83,7 +87,9 @@ bootidea.cli  ──git 依赖（rev 锁定）──▶  originlang.extension.ho
 
 | 命令 | 用途 |
 | --- | --- |
-| `repo clone/add/scan/list/info/open/status/fetch/remove` | Git 仓库登记与跨仓库管理；登记表在数据根目录 `repos.json` |
+| `repo clone/add/scan/list/info/open/status/refresh/relocate/remove` | Git 仓库登记与索引维护；索引在数据根目录 `repos.json`（v2） |
+| `repo fetch/pull/diff/branch/switch/start/push/foreach` | 跨仓库批量操作，支持 `--all`、`--group`、`--jobs`、`--dry-run`、`--fail-fast`、`--json` |
+| `repo group create/add/list/remove/delete` | 仓库分组，成员按稳定 ID 关联 |
 | `config list/get/set` | 查询生效配置；`set` 仅写入用户键（`repo.root`、`editor`） |
 | `doctor` | 基础环境诊断：git、配置文件、repo.root、editor、数据目录可写性 |
 | `info` | 宿主版本、可用后端、扩展计数 |
@@ -94,7 +100,9 @@ bootidea.cli  ──git 依赖（rev 锁定）──▶  originlang.extension.ho
 | `keygen` / `sign` | Ed25519 包签名 |
 | `trust list/add/remove` | 发布者信任库 |
 
-`repo` 组说明：目标支持登记名称或本地路径；`remove` 只取消登记、保留本地文件；`fetch` 只获取远端更新，不合并、不推送、不切换分支；批量 `status --all`、`fetch --all` 逐仓库报告，部分失败时以非零码退出。`repo open` 的编辑器按 `editor` 配置 > `EDITOR`/`VISUAL` > 系统默认解析。
+`repo` 组说明：首次 `scan/add/clone` 建立索引，日常命令读索引，显式扫描才展开目录。目标支持登记名称或本地路径；名称/路径列表与 `--all`、`--group`、`--under` 互斥，`--match`/`--exclude` 过滤后按路径去重。`list` 与 `status --cached` 不调用 Git；`--cached` 始终显示采集时间，缺失快照显示“未采集”而不是“干净”。`fetch` 只获取远端更新；`pull` 只允许快进；`push` 不隐式 force 或设置 upstream；写类命令执行前实时验证目标，执行后让相关快照过期。批量操作逐仓库报告，部分失败时以非零码退出。`remove` 只取消登记、保留本地文件。`repo open` 的编辑器按 `editor` 配置 > `EDITOR`/`VISUAL` > 系统默认解析。
+
+仓库索引 `repos.json` 版本为 2，记录扫描根目录规则、分组、可访问状态（`unknown/available/missing/inaccessible/invalid`）与状态快照（远端、分支、HEAD、改动、upstream、领先/落后、采集时间）。读取不写盘；写入用 `repos.lock` 排他锁保护“重新读取 → 修改 → 临时文件 → 原子替换”，Git 操作不持锁，提交时按稳定 ID 合并。旧版无 `version` 的登记表在首次写入时迁移，并把原文件备份为 `repos.json.v1.bak`；损坏或不支持的版本直接报错，不覆盖为空表。时间统一以 UTC RFC 3339 记录。裸仓库暂不支持。完整行为见 [repo 批量管理与仓库索引设计](docs/repo-design.md)。
 
 `agent` 要求提供该能力的扩展已安装（默认 id `harness`）。密钥不走命令行参数——那会出现在进程列表和 shell 历史里，所以只认 `--api-key-env` 指定的环境变量（默认 `BOOTIDEA_API_KEY`）。
 

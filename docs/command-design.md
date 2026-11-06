@@ -1,6 +1,6 @@
 # CLI 子命令设计
 
-更新日期：2026-11-05。实施进度：`bi`/`bootidea` 双入口、`repo` 命令组、`config` 与 `doctor` 已实现并验证；`app`、`env` 仍为规划。当前可执行入口为 `bootidea` 与 `bi`，共用同一份实现。架构职责遵循根目录 `AGENTS.md`。
+更新日期：2026-11-06。实施进度：`bi`/`bootidea` 双入口、`repo` 命令组（含索引 v2、缓存、分组与批量命令）、`config` 与 `doctor` 已实现；`app`、`env` 仍为规划。当前可执行入口为 `bootidea` 与 `bi`，共用同一份实现。架构职责遵循根目录 `AGENTS.md`。
 
 ## 命名与职责
 
@@ -37,28 +37,33 @@ bi app open vscode             # 启动软件
 
 ## repo：管理 Git 仓库
 
-维护已登记仓库的名称、路径和远端信息，使用户无需记住每个项目的位置。
+维护已登记仓库的名称、路径和远端信息，使用户无需记住每个项目的位置。目标采用“首次扫描建立索引，日常命令读取索引，显式扫描更新索引”，不在每次操作前递归开发目录。完整命令、索引格式、刷新规则和验收要求见 [repo 批量管理与仓库索引设计](repo-design.md)。
+
+已按 [repo 批量管理与仓库索引设计](repo-design.md) 实现：登记表升级为版本化索引 `repos.json`（v2），记录扫描根目录、分组、可访问状态与状态快照；日常命令只读索引，显式扫描才展开目录。
 
 ```sh
-bi repo clone <url>             # 克隆并登记仓库
-bi repo add .                  # 登记已有仓库
-bi repo scan E:\originlang      # 扫描目录，发现并登记仓库
-bi repo list                   # 列出已登记仓库
-bi repo info bootidea.cli       # 查看路径、远端和分支
-bi repo open bootidea.cli       # 用配置的编辑器打开仓库
-bi repo open .                 # 打开当前仓库
-bi repo status                 # 查看当前仓库状态
-bi repo status --all            # 汇总已登记仓库状态
-bi repo fetch --all             # 获取所有已登记仓库的远端更新
-bi repo remove bootidea.cli     # 取消登记，保留本地文件
+bi repo scan ~/Developer        # 扫描、登记并保存根目录规则
+bi repo scan . --depth 5 --exclude 'archive/**' --nested
+bi repo scan --known-roots      # 按保存的规则重扫
+bi repo add . --name backend    # 登记已有仓库
+bi repo clone <url> --dir ./x   # 克隆并登记
+bi repo list                    # 只读索引，不调用 Git
+bi repo status --all            # 实时汇总全部仓库
+bi repo status --all --cached   # 只读快照，显示采集时间与过期标记
+bi repo refresh                 # 刷新全部已登记仓库，不发现新仓库
+bi repo pull --all --dry-run    # 只快进，先看计划
+bi repo foreach --group platform -- cargo check
+bi repo group create platform && bi repo group add platform bootidea.cli
+bi repo relocate backend ~/code/backend
+bi repo remove backend          # 取消登记，保留本地文件
 ```
 
-- 仓库目标支持登记名称或本地路径；同名仓库必须消歧，不选择不确定的目标。
-- `add` 和 `scan` 重复执行不重复登记同一路径。
-- `remove` 只移除登记信息，不删除工作目录。
-- `fetch` 获取远端更新，不合并、不推送、不切换分支。
-- 批量操作逐仓库报告结果，部分失败时提供失败汇总及非零退出码。
-- 初期重点是跨仓库管理，提交、变基等继续使用 Git；不提供含义模糊的 `sync`。
+- 仓库目标支持登记名称或本地路径；名称/路径列表与 `--all`、`--group`、`--under` 互斥，`--match`/`--exclude` 取交集后按路径去重。
+- `add` 和 `scan` 重复执行不重复登记同一路径；扫描时同名不同路径报告冲突，不静默覆盖。
+- `remove` 只移除登记信息，不删除工作目录；`relocate` 保留 ID、名称与分组。
+- `fetch` 获取远端更新；`pull` 只允许快进，不合并、不推送、不切换分支；`push` 不隐式 force 或设置 upstream。
+- 批量操作逐仓库报告结果，支持 `--jobs`、`--dry-run`、`--fail-fast` 与 `--json`，部分失败时以非零码退出。
+- 提交、变基等复杂流程继续使用 Git 或 `foreach`；不提供含义模糊的 `sync`。裸仓库暂不支持。
 
 ## env：管理开发环境
 

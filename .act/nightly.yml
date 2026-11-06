@@ -1,12 +1,16 @@
 name: Nightly
 
-# bootidea.cli 的本地夜间构建：测试 → 编译 release 二进制 → 打包 tar.gz + sha256。
-# 产物只写到本仓库 dist/nightly/<stamp>/，不上传任何远端（无 gh、无 Release）。
+# bootidea.cli 的本地 CICD 全流程：格式与 lint 检查 → 测试 → 编译 release 二进制
+# → 打包 tar.gz + sha256。产物只写到本仓库 dist/nightly/<stamp>/，不上传任何远端
+# （无 gh、无 Release）。
+#
+# 分工：GitHub Actions 只跑 .github/workflows/release.yml（push vX.Y.Z 标签时构建并
+# 发布正式版，不跑测试）；测试与检查一律在这里完成，别再往 CI 里加测试。
 #
 # 运行（在 bootidea.cli 仓库根目录）：
 #   act -W .act/nightly.yml
 #
-# 与 .github/workflows/ci.yml 的差异，都是为了在 act 里可靠执行：
+# 与 .github/workflows/release.yml 的差异，都是为了在 act 里可靠执行：
 #   1. 不使用 actions/checkout、setup-* 等第三方 action——本地仓库本身就是源，
 #      工作区由 act 挂载进容器，产物直接写挂载目录。这也是 .actrc 里
 #      --action-offline-mode 成立的前提。
@@ -31,7 +35,7 @@ env:
 
 jobs:
   nightly:
-    name: 构建并打包
+    name: 检查、测试与打包
     runs-on: ubuntu-latest
     container:
       image: rust:1.99-bookworm
@@ -70,6 +74,18 @@ jobs:
             echo "out=$out"
           } >> "$GITHUB_OUTPUT"
           printf '版本 %s（HEAD %s）\n' "$pkg" "$sha"
+
+      - name: 格式检查
+        run: |
+          set -euo pipefail
+          cd /work/bootidea.cli
+          cargo fmt --all -- --check
+
+      - name: Clippy
+        run: |
+          set -euo pipefail
+          cd /work/bootidea.cli
+          cargo clippy --locked --all-targets -- -D warnings
 
       - name: 测试
         run: |
