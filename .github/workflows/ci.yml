@@ -1,7 +1,7 @@
 name: CI
 
 # 每次 push / PR 都编译并跑测试，保证 feature/dev 上始终是可构建状态。
-# 版本号与发布不在这里处理，见 release-please.yml。
+# 版本号与发布不在这里处理，见 release.yml（push vX.Y.Z 标签即发布）。
 on:
   push:
     branches: ['feature/dev']

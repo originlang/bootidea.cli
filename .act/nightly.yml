@@ -1,0 +1,124 @@
+name: Nightly
+
+# bootidea.cli 的本地夜间构建：测试 → 编译 release 二进制 → 打包 tar.gz + sha256。
+# 产物只写到本仓库 dist/nightly/<stamp>/，不上传任何远端（无 gh、无 Release）。
+#
+# 运行（在 bootidea.cli 仓库根目录）：
+#   act -W .act/nightly.yml
+#
+# 与 .github/workflows/ci.yml 的差异，都是为了在 act 里可靠执行：
+#   1. 不使用 actions/checkout、setup-* 等第三方 action——本地仓库本身就是源，
+#      工作区由 act 挂载进容器，产物直接写挂载目录。这也是 .actrc 里
+#      --action-offline-mode 成立的前提。
+#   2. 自带 container 镜像 rust:1.99-bookworm，工具链版本即镜像版本。
+#   3. 先把仓库快照（git archive HEAD）复制到容器内 /work 再编译：在挂载盘上
+#      做大量小文件 I/O 极慢，且 Linux 的 target/ 会污染本机 Windows 构建。
+#      产物只写回挂载目录的 dist/nightly/。
+#
+# 说明：nightly 版本号取 Cargo.toml 的 version + -nightly.<yyyymmdd>.<短 SHA>，
+# 与上游 nightly.yml 的日期+序号命名不同；本地构建无远端 tag 可推导序号，
+# 用短 SHA 即可唯一标识本次提交。
+
+on:
+  # act 默认事件是 push；只写 workflow_dispatch 时 `act -W .act/nightly.yml`
+  # 会以 push 解析并报 "Could not find any stages to run"。
+  push:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  nightly:
+    name: 构建并打包
+    runs-on: ubuntu-latest
+    container:
+      image: rust:1.99-bookworm
+    # act 默认用 sh(dash) 执行脚本，不支持 set -o pipefail；显式指定 bash。
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 45
+    steps:
+      - name: 取源码快照并计算版本
+        id: src
+        run: |
+          set -euo pipefail
+          src="$(pwd)"
+          work=/work/bootidea.cli
+          git config --global --add safe.directory '*'
+          test -d "$src/.git" || { echo "缺少仓库：$src" >&2; exit 1; }
+          rm -rf "$work"; mkdir -p "$work"
+          git -C "$src" archive --format=tar HEAD | tar -xf - -C "$work"
+
+          base="$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([0-9][0-9.]*\)".*/\1/p' "$work/Cargo.toml" | head -n1)"
+          [ -n "$base" ] || { echo 'Cargo.toml 中未找到 version' >&2; exit 1; }
+          sha="$(git -C "$src" rev-parse --short=7 HEAD)"
+          day="$(date -u +%Y%m%d)"
+          stamp="nightly.${day}.$(date -u +%H%M)"
+          pkg="${base}-nightly.${day}.${sha}"
+          out="$src/dist/nightly/$stamp"
+          mkdir -p "$out"
+          {
+            echo "base=$base"
+            echo "pkg=$pkg"
+            echo "sha=$sha"
+            echo "stamp=$stamp"
+            echo "branch=$(git -C "$src" rev-parse --abbrev-ref HEAD)"
+            echo "dirty=$(git -C "$src" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+            echo "out=$out"
+          } >> "$GITHUB_OUTPUT"
+          printf '版本 %s（HEAD %s）\n' "$pkg" "$sha"
+
+      - name: 测试
+        run: |
+          set -euo pipefail
+          cd /work/bootidea.cli
+          cargo test --locked
+
+      - name: 构建 release 二进制
+        run: |
+          set -euo pipefail
+          cd /work/bootidea.cli
+          cargo build --locked --release --bin bootidea
+          test -x target/release/bootidea
+
+      - name: 打包与校验和
+        env:
+          PKG: ${{ steps.src.outputs.pkg }}
+          BASE: ${{ steps.src.outputs.base }}
+          SHA: ${{ steps.src.outputs.sha }}
+          STAMP: ${{ steps.src.outputs.stamp }}
+          BRANCH: ${{ steps.src.outputs.branch }}
+          DIRTY: ${{ steps.src.outputs.dirty }}
+          OUT: ${{ steps.src.outputs.out }}
+        run: |
+          set -euo pipefail
+          target=x86_64-unknown-linux-gnu
+          name="bootidea-${PKG}-${target}"
+          stage="/work/stage/$name"
+          rm -rf /work/stage
+          mkdir -p "$stage" "$OUT"
+          cd /work/bootidea.cli
+          install -m 0755 target/release/bootidea "$stage/bootidea"
+          if [ -f README.md ]; then cp README.md "$stage/"; fi
+          cat > "$stage/build-info.json" <<EOF
+          {
+            "channel": "nightly",
+            "repo": "bootidea.cli",
+            "version": "${BASE}",
+            "packageVersion": "${PKG}",
+            "commit": "${SHA}",
+            "branch": "${BRANCH}",
+            "dirtyFiles": ${DIRTY},
+            "target": "${target}",
+            "builtAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          tar -czf "$OUT/$name.tar.gz" -C /work/stage "$name"
+          cd "$OUT"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          printf '%s\n' "$PKG" > VERSION
+          cat "$name.tar.gz.sha256"
+          printf '产物目录：%s\n' "$OUT"

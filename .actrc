@@ -1,0 +1,15 @@
+# act 的本地执行约定（bootidea.cli）。
+# 具体流水线见 .act/nightly.yml。
+
+# 不使用任何 uses: 第三方 action，因此没有需要预热的 action 缓存。
+# 保留此开关是为了在断网或镜像受限时直接报错，而不是静默去 GitHub 拉取。
+--action-offline-mode
+
+# bind 挂载：产物直接写回仓库 dist/nightly/，否则会留在容器里。
+--bind
+
+# 给 act 一个默认平台映射，避免首次运行弹出「选择默认镜像」的交互提问。
+-P ubuntu-latest=rust:1.99-bookworm
+
+# 工作流文件位置：省去每次 `-W` 参数，直接 `act` 即可。
+-W .act/nightly.yml
