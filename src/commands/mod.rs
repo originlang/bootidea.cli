@@ -3,12 +3,18 @@
 //! 每个命令只依赖 [`crate::config::Settings`] 与 [`crate::engine`]，不直接读
 //! 环境变量、也不自己拼安装路径——那两件事分别归配置层与宿主。
 
+pub mod config;
+pub mod doctor;
 pub mod ext;
 pub mod package;
+pub mod repo;
 pub mod run;
 
+pub use config::config;
+pub use doctor::doctor;
 pub use ext::ext;
 pub use package::{keygen, sign, trust};
+pub use repo::repo;
 pub use run::{agent, run};
 
 use crate::cli::Transport;

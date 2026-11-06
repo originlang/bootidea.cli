@@ -1,6 +1,6 @@
 # CLI 子命令设计
 
-更新日期：2026-11-05。本文为设计方案，尚未实现。当前可执行入口仍为 `bootidea`；本文中的 `bi`、`app`、`repo`、`env`、`config` 和 `doctor` 均不代表已可用功能。实施顺序见 [路线图](roadmap.md)，架构职责遵循根目录 `AGENTS.md`。
+更新日期：2026-11-05。实施进度：`bi`/`bootidea` 双入口、`repo` 命令组、`config` 与 `doctor` 已实现并验证；`app`、`env` 仍为规划。当前可执行入口为 `bootidea` 与 `bi`，共用同一份实现。架构职责遵循根目录 `AGENTS.md`。
 
 ## 命名与职责
 

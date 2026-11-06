@@ -57,6 +57,17 @@ pub struct Settings {
     pub require_signature: bool,
     /// 日志级别。
     pub log_level: LogLevel,
+    /// 仓库相关配置（键 `repo.root`，环境变量 `BOOTIDEA_REPO__ROOT`）。
+    pub repo: RepoSettings,
+    /// `repo open` 使用的编辑器命令（键 `editor`，环境变量 `BOOTIDEA_EDITOR`）。
+    pub editor: Option<String>,
+}
+
+/// 仓库子配置。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RepoSettings {
+    /// 未指定目标目录时的仓库克隆位置。
+    pub root: Option<PathBuf>,
 }
 
 impl Default for Settings {
@@ -66,6 +77,8 @@ impl Default for Settings {
             backend: Backend::Auto,
             require_signature: false,
             log_level: LogLevel::Info,
+            repo: RepoSettings::default(),
+            editor: None,
         }
     }
 }
@@ -100,9 +113,13 @@ pub fn load(global: &crate::cli::GlobalArgs) -> Result<Settings> {
         builder = builder.add_source(File::from(path).required(false));
     }
 
-    // `separator("__")` 保持单层键的扁平写法：BOOTIDEA_LOG_LEVEL → log_level。
+    // `prefix_separator("_")` 让 BOOTIDEA_HOME → home、BOOTIDEA_REPO__ROOT →
+    // repo.root；`separator("__")` 负责把双下划线后面的部分拆成嵌套键。不显式
+    // 指定 prefix_separator 时它会退回 separator（"__"），BOOTIDEA_HOME 会被
+    // 整个跳过。
     builder = builder.add_source(
         Environment::with_prefix(ENV_PREFIX)
+            .prefix_separator("_")
             .separator("__")
             .try_parsing(true),
     );
@@ -135,8 +152,10 @@ fn explicit_config(global: &crate::cli::GlobalArgs) -> Option<PathBuf> {
         .or_else(|| std::env::var_os("BOOTIDEA_CONFIG").map(PathBuf::from))
 }
 
-/// 默认配置文件：`$XDG_CONFIG_HOME/bootidea/` 下的第一个候选，或 `~/.bootidea/`。
-fn default_config() -> Option<PathBuf> {
+/// 默认位置上的用户配置文件候选，按查找顺序排列。
+///
+/// `config set` 也从这里挑写入目标：第一个已存在的候选，一个都没有时用第一个候选根。
+pub fn config_candidates() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(base) = std::env::var_os("XDG_CONFIG_HOME") {
         roots.push(PathBuf::from(base).join("bootidea"));
@@ -154,7 +173,34 @@ fn default_config() -> Option<PathBuf> {
                 .map(|name| dir.join(name))
                 .into_iter()
         })
-        .find(|path| path.is_file())
+        .collect()
+}
+
+/// 默认配置文件：候选里第一个真实存在的文件。
+fn default_config() -> Option<PathBuf> {
+    config_candidates().into_iter().find(|path| path.is_file())
+}
+
+/// `config set` 的写入目标。
+///
+/// 显式指定的文件必须已经存在（与 `--config` 的语义一致）；否则写进第一个
+/// 已存在的默认候选，连默认文件都还没有时在第一个候选根下新建 `config.toml`。
+pub fn writable_config_path(explicit: Option<&PathBuf>) -> Result<PathBuf> {
+    if let Some(path) = explicit {
+        if !path.is_file() {
+            bail!("配置文件不存在: {}", path.display());
+        }
+        return Ok(path.clone());
+    }
+    if let Some(path) = default_config() {
+        return Ok(path);
+    }
+    let first_candidate = config_candidates()
+        .into_iter()
+        .next()
+        .context("无法确定用户配置目录")?;
+    let root = first_candidate.parent().context("无法确定用户配置目录")?;
+    Ok(root.join("config.toml"))
 }
 
 fn backend_name(backend: Backend) -> &'static str {
@@ -187,6 +233,22 @@ mod tests {
         assert!(!settings.require_signature);
         assert_eq!(settings.log_level, LogLevel::Info);
         assert!(settings.home.is_none());
+        assert!(settings.repo.root.is_none());
+        assert!(settings.editor.is_none());
+    }
+
+    #[test]
+    fn repo_root_reads_nested_and_env_style_keys() {
+        // 配置文件里的嵌套键 [repo] root 与环境变量 BOOTIDEA_REPO__ROOT
+        // 合并后都映射到 repo.root。
+        let parsed: Settings =
+            serde_json::from_str(r#"{"repo": {"root": "E:/repos"}, "editor": "code --wait"}"#)
+                .expect("parse");
+        assert_eq!(
+            parsed.repo.root.as_deref(),
+            Some(std::path::Path::new("E:/repos"))
+        );
+        assert_eq!(parsed.editor.as_deref(), Some("code --wait"));
     }
 
     #[test]

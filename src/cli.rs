@@ -137,6 +137,17 @@ pub enum Command {
     /// 管理受信任发布者
     #[command(subcommand)]
     Trust(TrustCommand),
+
+    /// 管理已登记的 Git 仓库
+    #[command(subcommand)]
+    Repo(RepoCommand),
+
+    /// 查询与修改用户配置
+    #[command(subcommand)]
+    Config(ConfigCommand),
+
+    /// 汇总基础环境诊断
+    Doctor,
 }
 
 /// 传输方式。
@@ -221,6 +232,63 @@ pub enum TrustCommand {
     },
 }
 
+/// 仓库管理子命令。
+///
+/// 仓库目标支持登记名称或本地路径；登记名称在登记时保证唯一。
+#[derive(Subcommand, Debug)]
+pub enum RepoCommand {
+    /// 克隆并登记仓库
+    Clone {
+        /// 远端地址
+        url: String,
+        /// 目标目录（默认取 repo.root 配置下的仓库名）
+        #[arg(long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+        /// 登记名称（默认取仓库名）
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// 登记已有仓库
+    Add { path: PathBuf },
+    /// 扫描目录，发现并登记其中的仓库
+    Scan { dir: PathBuf },
+    /// 列出已登记仓库
+    List,
+    /// 查看路径、远端和分支
+    Info { target: String },
+    /// 用配置的编辑器打开仓库
+    Open { target: String },
+    /// 查看仓库状态；不带目标时查看当前仓库
+    Status {
+        /// 登记名称或本地路径
+        target: Option<String>,
+        /// 汇总全部已登记仓库
+        #[arg(long)]
+        all: bool,
+    },
+    /// 获取远端更新，不合并、不推送、不切换分支
+    Fetch {
+        /// 登记名称或本地路径
+        target: Option<String>,
+        /// 获取全部已登记仓库
+        #[arg(long)]
+        all: bool,
+    },
+    /// 取消登记，保留本地文件
+    Remove { target: String },
+}
+
+/// 用户配置子命令。
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommand {
+    /// 查看配置
+    List,
+    /// 查看单个配置项
+    Get { key: String },
+    /// 写入用户配置文件（repo.root、editor）
+    Set { key: String, value: String },
+}
+
 impl Cli {
     /// 解析配置并执行。
     pub fn dispatch(self) -> Result<()> {
@@ -257,6 +325,11 @@ impl Cli {
                 publisher,
             } => commands::sign(&dir, &key, publisher.as_deref()),
             Command::Trust(command) => commands::trust(&settings, command),
+            Command::Repo(command) => commands::repo(&settings, command),
+            Command::Config(command) => {
+                commands::config(&settings, self.global.config.as_ref(), command)
+            }
+            Command::Doctor => commands::doctor(&settings),
         }
     }
 }

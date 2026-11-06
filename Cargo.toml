@@ -10,6 +10,11 @@ license = "MIT"
 name = "bootidea"
 path = "src/main.rs"
 
+# 快捷入口：与 bootidea 完全同一份实现，两个入口行为一致。
+[[bin]]
+name = "bi"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
@@ -18,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
 tiny_http = "0.12"
+toml = "0.8"
 
 # 宿主引擎：同进程链接，与 bootidea 一起编译。
 #

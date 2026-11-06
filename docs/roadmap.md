@@ -27,4 +27,6 @@ CLI 独立提供基础命令，通过可选下载、启动或连接 Host 获得�
 
 当前 CLI 内嵌 Host 库并承载 `serve`，需要在 Host 独立入口可用后迁移。Host 发布包、CLI 发布包和 harness 插件包保持清晰区分。
 
+已交付（2026-11-06）：`bi`/`bootidea` 双入口、`repo` 命令组（登记表 `repos.json`、克隆、扫描、状态汇总、fetch）、`config`（repo.root、editor）与 `doctor` 基础诊断。首期剩余：`app` 软件来源适配与 `env` 工具链适配。
+
 当前仅编写代码和文档，构建、测试、启动与发布待用户要求。

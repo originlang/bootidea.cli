@@ -2,10 +2,16 @@
 
 BootIDEA 的命令行入口。宿主与插件都不带 CLI：`originlang.extension.host` 是库，`originlang.extension.harness` 是动态库插件，用户能敲的每一条命令都在这里。
 
+两个可执行入口 `bootidea` 与 `bi` 共用同一份实现，行为完全一致；`bi` 是日常快捷入口，`bootidea` 兼容既有脚本。
+
 ```sh
+bi repo clone https://github.com/originlang/bootidea.cli.git
+bi repo scan E:\originlang
+bi repo status --all
+bi config set repo.root E:\originlang
+bi doctor
+
 bootidea ext install ./examples/toolbox --grant storage.read,storage.write,log.write
-bootidea ext list
-bootidea agent "what is 2+3?" --model gpt-4o-mini --base-url https://api.openai.com/v1
 bootidea serve --transport http --port 7311
 ```
 
@@ -22,12 +28,12 @@ bootidea serve --transport http --port 7311
 ## 目录
 
 ```
-src/main.rs            入口与退出码
+src/main.rs            入口与退出码（bi 与 bootidea 两个 bin 共用）
 src/cli.rs             clap 定义、命令分发
 src/config.rs          分层配置与 Settings
 src/engine.rs          宿主装配：安装目录、后端路由、shutdown 保证
 src/log.rs             级别过滤的 stderr 输出
-src/commands/          info / ext / run / agent / serve / keygen / sign / trust
+src/commands/          info / repo / config / doctor / ext / run / agent / serve / keygen / sign / trust
 src/serve/             JSON-RPC 的 stdio、TCP、HTTP 三种传输
 tests/transports.rs    真实进程的传输与鉴权测试
 ```
@@ -42,6 +48,8 @@ tests/transports.rs    真实进程的传输与鉴权测试
 | 执行后端 | `--backend` | `BOOTIDEA_BACKEND` | `backend` | `auto` |
 | 强制签名 | `--require-signature` | `BOOTIDEA_REQUIRE_SIGNATURE` | `require_signature` | `false` |
 | 日志级别 | `--log-level` | `BOOTIDEA_LOG_LEVEL` | `log_level` | `info` |
+| 仓库克隆根目录 | — | `BOOTIDEA_REPO__ROOT` | `repo.root` | 未设置 |
+| 编辑器 | — | `BOOTIDEA_EDITOR` | `editor` | 回退 `EDITOR`/`VISUAL`/系统默认 |
 | 配置文件 | `-c/--config` | `BOOTIDEA_CONFIG` | — | 见下 |
 
 配置文件查找顺序：
@@ -71,10 +79,13 @@ bootidea.cli  ──git 依赖（rev 锁定）──▶  originlang.extension.ho
 
 ## 命令
 
-未来的 `bi` 快捷入口及 `app`（软件）、`repo`（Git 仓库）、`env`（开发环境）等命令组见 [CLI 子命令设计](docs/command-design.md)。该文档为规划，尚未实现；下表列出当前命令。
+`bi` / `bootidea` 两个入口可用同一套命令。`repo`、`config`、`doctor` 已实现；`app`（软件）、`env`（开发环境）见 [CLI 子命令设计](docs/command-design.md)，仍为规划。
 
 | 命令 | 用途 |
 | --- | --- |
+| `repo clone/add/scan/list/info/open/status/fetch/remove` | Git 仓库登记与跨仓库管理；登记表在数据根目录 `repos.json` |
+| `config list/get/set` | 查询生效配置；`set` 仅写入用户键（`repo.root`、`editor`） |
+| `doctor` | 基础环境诊断：git、配置文件、repo.root、editor、数据目录可写性 |
 | `info` | 宿主版本、可用后端、扩展计数 |
 | `ext list/info/install/uninstall/enable/disable/grant/revoke/logs/init` | 扩展全生命周期 |
 | `run` | 在一次性安装目录里跑本地包的一个方法，`--with` 可带配套包 |
@@ -82,6 +93,8 @@ bootidea.cli  ──git 依赖（rev 锁定）──▶  originlang.extension.ho
 | `serve` | stdio / TCP / HTTP 三种 JSON-RPC 传输 |
 | `keygen` / `sign` | Ed25519 包签名 |
 | `trust list/add/remove` | 发布者信任库 |
+
+`repo` 组说明：目标支持登记名称或本地路径；`remove` 只取消登记、保留本地文件；`fetch` 只获取远端更新，不合并、不推送、不切换分支；批量 `status --all`、`fetch --all` 逐仓库报告，部分失败时以非零码退出。`repo open` 的编辑器按 `editor` 配置 > `EDITOR`/`VISUAL` > 系统默认解析。
 
 `agent` 要求提供该能力的扩展已安装（默认 id `harness`）。密钥不走命令行参数——那会出现在进程列表和 shell 历史里，所以只认 `--api-key-env` 指定的环境变量（默认 `BOOTIDEA_API_KEY`）。
 
@@ -101,8 +114,6 @@ cargo test
 | 工作流 | 触发 | 作用 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push / PR 到 `feature/dev` | Linux + Windows 编译并跑测试；fmt 与 clippy 作为门禁 |
-| `.github/workflows/release-please.yml` | push 到 `feature/dev` | release-please 开版本 PR；tag 落地后构建双平台产物并挂到 Release |
+| `.github/workflows/release.yml` | push `vX.Y.Z` 标签 | 按 tag 检出代码，测试并构建双平台产物，创建 GitHub Release 并挂资产 |
 
-版本号不手工维护，由 [release-please](https://github.com/googleapis/release-please) 依据 conventional commits 推导：`fix:` → patch，`feat:` → minor，`feat!:` / `BREAKING CHANGE` → 0.x 阶段只升 minor（`bump-minor-pre-major`）。因此提交信息必须符合规范，否则该提交不会进入 CHANGELOG，也不会触发版本提升。
-
-工作流需要仓库配置 `RELEASE_PLEASE_TOKEN` secret（PAT 或 App token）。用默认 `GITHUB_TOKEN` 创建的 tag 不会触发下游构建，也无法在受保护分支上开 PR。
+发布采用 **push tag 即发布**：版本号就是 tag 本身（`git tag v0.1.1 && git push origin v0.1.1`）。打 tag 前把 `Cargo.toml` 的 `version` 改成目标版本即可，无需 release-please，也无需配置任何额外 secret。
